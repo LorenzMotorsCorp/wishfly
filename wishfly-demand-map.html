@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WISHFLY — Demand Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0a0d12;--hot1:#ff4d2e;--hot2:#ffae3b;--sky1:#27d4ff;--sky2:#6ff0c8;--paper:#f4efe6}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;font-family:'Manrope',sans-serif;background:#05070a;color:var(--paper)}
+  #map{position:absolute;inset:0;z-index:1;background:#0a1219}
+  .leaflet-container{background:#0a1219}
+  .grain{position:fixed;inset:0;pointer-events:none;opacity:.05;z-index:60;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+  .top{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;justify-content:space-between;align-items:center;
+    padding:15px 18px;background:linear-gradient(#05070add,transparent);pointer-events:none}
+  .wm{font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;letter-spacing:.36em;text-indent:.36em}
+  .wm small{display:block;font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.28em;color:#6c7884;margin-top:3px;text-indent:.28em}
+  .live{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7fe6c4;letter-spacing:.06em;display:flex;align-items:center;gap:6px;background:rgba(10,16,20,.6);padding:6px 10px;border-radius:9px;border:1px solid #1c2832}
+  .live .d{width:7px;height:7px;border-radius:50%;background:var(--sky2);box-shadow:0 0 8px var(--sky1)}
+
+  /* stats rail */
+  .rail{position:fixed;top:64px;left:14px;z-index:25;width:210px;display:flex;flex-direction:column;gap:10px}
+  .panel{background:linear-gradient(170deg,rgba(16,24,30,.92),rgba(9,14,18,.95));border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;padding:14px;backdrop-filter:blur(12px);box-shadow:0 18px 44px -22px #000}
+  .panel h3{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.22em;color:#69737e;text-transform:uppercase;margin-bottom:11px}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 10px}
+  .stat .n{font-family:'Bricolage Grotesque';font-weight:800;font-size:23px;line-height:1;
+    background:linear-gradient(120deg,var(--sky1),var(--sky2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat .n.warm{background:linear-gradient(120deg,var(--hot2),var(--hot1));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat .l{font-size:10px;color:#8b95a0;margin-top:3px;line-height:1.2}
+  .corr{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:6px 0;border-top:1px solid #161f27}
+  .corr:first-of-type{border-top:none}
+  .corr .rank{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#5a646e;width:14px}
+  .corr .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .corr .ct{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--sky2)}
+  .corr .bar{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--sky1),var(--hot1));margin-top:3px}
+
+  /* controls */
+  .ctrl{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:25;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:94vw}
+  .ctrl button{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;cursor:pointer;
+    background:rgba(16,24,30,.9);border:1px solid #1f2a33;color:#cdd5dd;padding:10px 13px;border-radius:11px;
+    backdrop-filter:blur(10px);transition:.15s;display:flex;align-items:center;gap:7px}
+  .ctrl button:active{transform:scale(.95)}
+  .ctrl button.on{border-color:var(--sky1);color:var(--sky2);background:rgba(20,40,46,.9)}
+  .ctrl button.warm{border-color:#3a2418}
+  .ctrl button.warm.on{border-color:var(--hot2);color:var(--hot2)}
+
+  /* drop overlay */
+  .drop{position:fixed;inset:0;z-index:70;background:rgba(5,7,10,.82);backdrop-filter:blur(6px);
+    display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center}
+  .drop.show{display:flex}
+  .drop .ring{width:120px;height:120px;border-radius:50%;border:2px dashed var(--sky1);display:flex;align-items:center;justify-content:center;font-size:40px}
+  .drop h2{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px}
+  .drop p{font-size:13px;color:#9aa3ac}
+
+  .empty{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;text-align:center;pointer-events:none;transition:opacity .5s}
+  .empty h2{font-family:'Bricolage Grotesque';font-weight:800;font-size:26px;margin-bottom:8px}
+  .empty p{font-size:13px;color:#8b95a0;line-height:1.5;max-width:280px;margin:0 auto}
+  .empty .hot{color:var(--hot2)}
+
+  .toast{position:fixed;bottom:74px;left:50%;transform:translateX(-50%) translateY(10px);z-index:50;opacity:0;
+    background:#10181f;border:1px solid #243039;border-radius:11px;padding:9px 14px;font-size:12px;color:#cdd5dd;transition:.35s;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  input[type=file]{display:none}
+  a.cred{color:#3a4954}
+  @media(max-width:560px){.rail{width:calc(100vw - 28px)} .panel.corrPanel{display:none}}
+</style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="grain"></div>
+
+  <div class="top">
+    <div class="wm"><span>𓆟</span> WISHFLY<small>DEMAND MAP</small></div>
+    <div class="live"><span class="d"></span><span id="liveTxt">no data</span></div>
+  </div>
+
+  <div class="rail">
+    <div class="panel">
+      <h3>The wish so far</h3>
+      <div class="statgrid">
+        <div class="stat"><div class="n" id="sCount">0</div><div class="l">wishes logged</div></div>
+        <div class="stat"><div class="n warm" id="sSaved">—</div><div class="l">median time wished away</div></div>
+        <div class="stat"><div class="n" id="sDest">0</div><div class="l">unique destinations</div></div>
+        <div class="stat"><div class="n warm" id="sPeak">—</div><div class="l">at rush hour</div></div>
+      </div>
+    </div>
+    <div class="panel corrPanel">
+      <h3>Most-wished destinations</h3>
+      <div id="corrList"><div style="font-size:11px;color:#5a646e">Load data to rank corridors.</div></div>
+    </div>
+  </div>
+
+  <div class="empty" id="empty">
+    <h2>The sky is empty.</h2>
+    <p>Drop a Formspree <span class="hot">CSV export</span> anywhere on this page, or tap <b>Demo data</b> below to see what a city full of wishes looks like.</p>
+  </div>
+
+  <div class="ctrl">
+    <button id="bDemo" class="warm">✦ Demo data</button>
+    <button id="bLoad">⇪ Load CSV</button>
+    <button id="bDest" class="on">◎ Destinations</button>
+    <button id="bOrig">◉ Origins</button>
+    <button id="bLines">⤳ Desire lines</button>
+  </div>
+  <input type="file" id="file" accept=".csv,.json,text/csv,application/json">
+
+  <div class="drop" id="dropOv">
+    <div class="ring">𓆟</div>
+    <h2>Drop your wishes</h2>
+    <p>CSV or JSON exported from Formspree</p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG — to make this map LIVE (auto-updating):
+   Point DATA_URL at a public CSV/JSON feed of your wishes.
+   Easiest path: pipe the app's wishes into a Google Sheet via a
+   Google Apps Script web app, then publish the sheet as CSV and
+   paste that URL here. Formspree itself has no public read API,
+   so for Formspree you EXPORT a CSV and drop it on this page.
+   ============================================================ */
+const DATA_URL = "";          // e.g. published Google Sheet CSV url
+const REFRESH_SECONDS = 30;   // live polling interval if DATA_URL set
+
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([40.66,-74.05],10.5);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.control.attribution({position:'bottomright',prefix:false}).addAttribution('<a class="cred" href="https://carto.com/attributions">CARTO</a> · © OSM').addTo(map);
+
+const GRADIENT={0.15:'#27d4ff',0.4:'#6ff0c8',0.62:'#ffae3b',0.82:'#ff4d2e',1.0:'#ff2d00'};
+const $=id=>document.getElementById(id);
+let WISHES=[], heat=null, lineLayer=L.layerGroup().addTo(map), mode='dest', showLines=false;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2400);}
+
+/* ---------- flexible parsing ---------- */
+function num(x){const n=parseFloat(x);return isFinite(n)?n:null;}
+function pick(o,keys){for(const k of keys){for(const ok in o){if(ok.toLowerCase().replace(/[\s_-]/g,'')===k){return o[ok];}}}return undefined;}
+function pairFrom(o,which){
+  // try flat columns first
+  const la=which==='from'?['fromlat','originlat','flat','startlat']:['tolat','destlat','endlat'];
+  const lo=which==='from'?['fromlng','fromlon','originlng','flng','startlng']:['tolng','tolon','destlng','endlng'];
+  let lat=num(pick(o,la)), lng=num(pick(o,lo));
+  if(lat!=null&&lng!=null) return [lat,lng];
+  // try an array-ish single column like from="[40.4,-74.1]"
+  const raw=pick(o,which==='from'?['from','origin']:['to','dest','destination']);
+  if(typeof raw==='string'){const m=raw.match(/-?\d+\.\d+/g);if(m&&m.length>=2)return [num(m[0]),num(m[1])];}
+  if(Array.isArray(raw)&&raw.length>=2) return [num(raw[0]),num(raw[1])];
+  return null;
+}
+function normalize(rows){
+  const out=[];
+  rows.forEach(o=>{
+    const f=pairFrom(o,'from'), t=pairFrom(o,'to');
+    if(!t&&!f) return;
+    out.push({
+      from:f, to:t,
+      toName:(pick(o,['toname','destname','destination','to'])||'').toString().split(',').slice(0,2).join(','),
+      driveMin:num(pick(o,['drivemin','drive','driveminutes'])),
+      flyMin:num(pick(o,['flymin','fly','flyminutes'])),
+      peak:(()=>{const p=pick(o,['peak','rushhour']);return p==1||p==='1'||p===true||p==='true';})()
+    });
+  });
+  return out;
+}
+function parseCSV(text){
+  const rows=[];let i=0,field='',row=[],inq=false;
+  while(i<text.length){const c=text[i];
+    if(inq){ if(c=='"'){ if(text[i+1]=='"'){field+='"';i++;} else inq=false; } else field+=c; }
+    else { if(c=='"')inq=true; else if(c==','){row.push(field);field='';} else if(c=='\n'||c=='\r'){ if(field!==''||row.length){row.push(field);rows.push(row);} field='';row=[]; if(c=='\r'&&text[i+1]=='\n')i++; } else field+=c; }
+    i++;
+  }
+  if(field!==''||row.length){row.push(field);rows.push(row);}
+  if(rows.length<2)return [];
+  const head=rows[0].map(h=>h.trim());
+  return rows.slice(1).filter(r=>r.length>1).map(r=>{const o={};head.forEach((h,k)=>o[h]=r[k]);return o;});
+}
+function ingest(text){
+  let rows;
+  text=text.trim();
+  try{ if(text[0]=='['||text[0]=='{'){ const j=JSON.parse(text); rows=Array.isArray(j)?j:(j.submissions||j.data||[j]); } else rows=parseCSV(text); }
+  catch(e){ rows=parseCSV(text); }
+  const w=normalize(rows);
+  if(!w.length){ toast('Hmm — no coordinates found in that file.'); return; }
+  WISHES=w; render(); toast(`Loaded ${w.length} wishes ✦`);
+}
+
+/* ---------- render ---------- */
+function render(){
+  $('empty').style.opacity = WISHES.length? 0 : 1;
+  if(heat){map.removeLayer(heat);heat=null;} lineLayer.clearLayers();
+
+  const pts=[];
+  WISHES.forEach(w=>{
+    if(mode!=='orig' && w.to)  pts.push([w.to[0],w.to[1],1]);
+    if(mode==='orig'&& w.from) pts.push([w.from[0],w.from[1],1]);
+    if(showLines && w.from && w.to){
+      lineLayer.addLayer(L.polyline([w.from,w.to],{color:'#27d4ff',weight:1,opacity:.18}));
+    }
+  });
+  heat=L.heatLayer(pts,{radius:30,blur:22,maxZoom:13,minOpacity:.35,gradient:GRADIENT}).addTo(map);
+
+  if(pts.length){const b=L.latLngBounds(pts.map(p=>[p[0],p[1]]));map.fitBounds(b,{padding:[120,60],maxZoom:12});}
+  stats();
+}
+function median(a){if(!a.length)return null;a=a.slice().sort((x,y)=>x-y);const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2;}
+function stats(){
+  const n=WISHES.length;
+  $('sCount').textContent=n;
+  $('liveTxt').textContent=n?`${n} wishes`:'no data';
+  const saved=WISHES.filter(w=>w.driveMin!=null&&w.flyMin!=null).map(w=>w.driveMin-w.flyMin);
+  const md=median(saved); $('sSaved').textContent=md!=null?Math.round(md)+'m':'—';
+  const peak=WISHES.filter(w=>w.peak).length; $('sPeak').textContent=n?Math.round(peak/n*100)+'%':'—';
+
+  // aggregate destinations by name (fallback rounded coords)
+  const agg={};
+  WISHES.forEach(w=>{
+    let key=(w.toName&&w.toName.trim())|| (w.to?`${w.to[0].toFixed(2)}, ${w.to[1].toFixed(2)}`:'?');
+    agg[key]=(agg[key]||0)+1;
+  });
+  const ranked=Object.entries(agg).sort((a,b)=>b[1]-a[1]);
+  $('sDest').textContent=ranked.length;
+  const max=ranked.length?ranked[0][1]:1;
+  $('corrList').innerHTML = ranked.slice(0,5).map(([nm,ct],i)=>
+    `<div class="corr"><span class="rank">${i+1}</span><div style="flex:1;min-width:0">
+       <div style="display:flex;gap:8px"><span class="nm">${nm}</span><span class="ct">${ct}</span></div>
+       <div class="bar" style="width:${Math.max(12,ct/max*100)}%"></div></div></div>`
+  ).join('') || '<div style="font-size:11px;color:#5a646e">No destinations yet.</div>';
+}
+
+/* ---------- demo data ---------- */
+function demo(){
+  const origins=[ // NJ commuter clusters
+    {n:'Hazlet',lat:40.4267,lng:-74.1665,w:9},{n:'Edison',lat:40.5187,lng:-74.4121,w:8},
+    {n:'Newark',lat:40.7357,lng:-74.1724,w:7},{n:'Red Bank',lat:40.3471,lng:-74.0643,w:6},
+    {n:'New Brunswick',lat:40.4862,lng:-74.4518,w:6},{n:'Toms River',lat:39.9537,lng:-74.1979,w:5},
+    {n:'Paramus',lat:40.9445,lng:-74.0754,w:5},{n:'Asbury Park',lat:40.2204,lng:-74.0121,w:4}
+  ];
+  const dests=[ // where everyone actually wants to be
+    {n:'Lower Manhattan',lat:40.7075,lng:-74.0113,w:12},{n:'Midtown',lat:40.7549,lng:-73.984,w:11},
+    {n:'Newark',lat:40.7357,lng:-74.1724,w:6},{n:'JFK Airport',lat:40.6413,lng:-73.7781,w:7},
+    {n:'Hoboken',lat:40.744,lng:-74.0324,w:5},{n:'Jersey City',lat:40.7178,lng:-74.0431,w:5}
+  ];
+  const wpick=arr=>{const tot=arr.reduce((s,a)=>s+a.w,0);let r=Math.random()*tot;for(const a of arr){if((r-=a.w)<=0)return a;}return arr[0];};
+  const j=()=>(Math.random()-0.5)*0.03;
+  const W=[];
+  for(let k=0;k<185;k++){
+    const o=wpick(origins),d=wpick(dests);
+    const from=[o.lat+j(),o.lng+j()],to=[d.lat+j(),d.lng+j()];
+    const R=3958.8,dLat=(to[0]-from[0])*Math.PI/180,dLng=(to[1]-from[1])*Math.PI/180;
+    const s=Math.sin(dLat/2)**2+Math.cos(from[0]*Math.PI/180)*Math.cos(to[0]*Math.PI/180)*Math.sin(dLng/2)**2;
+    const mi=2*R*Math.asin(Math.sqrt(s));
+    const flyMin=mi/150*60+2.5, driveMin=mi*1.35/26*60*(0.8+Math.random()*0.6);
+    W.push({from,to,toName:d.n,driveMin,flyMin,peak:Math.random()<0.46});
+  }
+  WISHES=W; render(); toast('Demo: 185 imagined commutes ✦');
+}
+
+/* ---------- live / file / drag ---------- */
+async function fetchLive(){
+  if(!DATA_URL)return;
+  try{const r=await fetch(DATA_URL,{cache:'no-store'});ingest(await r.text());$('liveTxt').textContent+=' · live';}
+  catch(e){toast('Live feed unreachable.');}
+}
+$('file').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>ingest(rd.result);rd.readAsText(f);});
+$('bLoad').onclick=()=>$('file').click();
+$('bDemo').onclick=demo;
+['dragenter','dragover'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();$('dropOv').classList.add('show');}));
+['dragleave','drop'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();if(ev==='drop'||e.relatedTarget===null)$('dropOv').classList.remove('show');}));
+window.addEventListener('drop',e=>{e.preventDefault();$('dropOv').classList.remove('show');const f=e.dataTransfer.files[0];if(f){const rd=new FileReader();rd.onload=()=>ingest(rd.result);rd.readAsText(f);}});
+
+function setMode(m){mode=m;$('bDest').classList.toggle('on',m==='dest');$('bOrig').classList.toggle('on',m==='orig');render();}
+$('bDest').onclick=()=>setMode('dest');
+$('bOrig').onclick=()=>setMode('orig');
+$('bLines').onclick=()=>{showLines=!showLines;$('bLines').classList.toggle('on',showLines);render();};
+
+/* ---------- go ---------- */
+if(DATA_URL){ fetchLive(); setInterval(fetchLive,REFRESH_SECONDS*1000); }
+</script>
+</body>
+</html>
