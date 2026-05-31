@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WISHFLY</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0d12; --hot1:#ff4d2e; --hot2:#ffae3b;
+    --sky1:#27d4ff; --sky2:#6ff0c8; --paper:#f4efe6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;font-family:'Manrope',sans-serif;background:#05070a;color:var(--paper)}
+  #map{position:absolute;inset:0;z-index:1;background:#0a1219}
+  .leaflet-container{background:#0a1219}
+  .grain{position:fixed;inset:0;pointer-events:none;opacity:.05;z-index:60;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  /* mood glow that shifts hot->cool */
+  .mood{position:fixed;inset:0;pointer-events:none;z-index:2;transition:opacity .9s ease, background .9s ease;
+    background:radial-gradient(90% 45% at 50% 100%, rgba(255,77,46,.22), transparent 70%)}
+  body.flying .mood{background:radial-gradient(90% 55% at 50% 0%, rgba(39,212,255,.20), transparent 72%)}
+
+  /* top brand */
+  .top{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;justify-content:space-between;align-items:center;
+    padding:16px 18px;background:linear-gradient(#05070acc,transparent)}
+  .wm{font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;letter-spacing:.4em;text-indent:.4em}
+  .bfly{margin-right:3px}
+  .status{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8b95a0;letter-spacing:.06em;
+    display:flex;align-items:center;gap:6px}
+  .blip{width:7px;height:7px;border-radius:50%;background:var(--hot1);animation:blink 1.1s infinite}
+  body.flying .blip{background:var(--sky1);animation:none}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* bottom sheet */
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:30;padding:18px 18px calc(20px + env(safe-area-inset-bottom));
+    background:linear-gradient(#05070a00,#05070aee 26%);transition:transform .4s ease}
+  .card{background:linear-gradient(170deg,rgba(18,28,34,.93),rgba(10,16,20,.97));
+    border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:18px;backdrop-filter:blur(14px);
+    box-shadow:0 24px 60px -20px #000;transition:border-color .6s}
+  body.flying .card{border-color:rgba(111,240,200,.22)}
+
+  .nag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;color:#ff8a6b;
+    display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .nag .blip2{width:7px;height:7px;border-radius:50%;background:var(--hot1);animation:blink 1.1s infinite}
+  h1{font-family:'Bricolage Grotesque';font-weight:800;font-size:27px;line-height:1.0;letter-spacing:-.01em;margin-bottom:6px}
+  h1 em{font-style:normal;background:linear-gradient(100deg,var(--hot1),var(--hot2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{font-size:12.5px;color:#9aa3ac;margin-bottom:16px;line-height:1.45}
+
+  .route{margin-bottom:14px}
+  .leg{display:flex;align-items:center;gap:12px;padding:11px 13px;background:#0e161e;border:1px solid #1c2832;border-radius:14px;position:relative}
+  .leg+.leg{margin-top:9px}
+  .leg .ic{width:11px;height:11px;border-radius:50%;flex:none}
+  .leg.from .ic{background:var(--hot1)} .leg.to .ic{background:var(--sky1)}
+  .leg .col{flex:1;min-width:0}
+  .leg .k{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.2em;color:#69737e;text-transform:uppercase}
+  .leg .v{font-size:14px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .leg .v.dim{color:#5a646e;font-weight:500}
+  .connector{position:absolute;left:18px;top:-9px;width:1px;height:9px;background:#26323d}
+  .destinput{width:100%;background:transparent;border:none;color:var(--paper);font-family:'Manrope';font-size:14px;font-weight:700;outline:none}
+  .destinput::placeholder{color:#5a646e;font-weight:500}
+
+  .presets{display:flex;gap:7px;margin-bottom:15px;flex-wrap:wrap}
+  .preset{font-family:'IBM Plex Mono',monospace;font-size:10.5px;background:#10181f;border:1px solid #1f2a33;
+    color:#aab3bc;padding:7px 11px;border-radius:9px;cursor:pointer;transition:.15s}
+  .preset:active{transform:scale(.95);background:#17222b}
+
+  .btn{width:100%;border:none;cursor:pointer;font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;
+    padding:17px;border-radius:16px;transition:transform .15s, opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:linear-gradient(100deg,var(--hot1),var(--hot2));color:#1a0c06;box-shadow:0 14px 32px -12px rgba(255,77,46,.55)}
+  .btn[disabled]{opacity:.5;pointer-events:none}
+
+  /* result */
+  .result{display:none}
+  .vent{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#7fe6c4;letter-spacing:.03em;margin-bottom:14px;line-height:1.5}
+  .compare{display:flex;align-items:flex-end;gap:12px;margin-bottom:14px}
+  .compare .blk{flex:1}
+  .compare .k{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.16em;color:#69737e;text-transform:uppercase}
+  .compare .drive{font-family:'Bricolage Grotesque';font-weight:800;font-size:24px;color:#5b6670;text-decoration:line-through;text-decoration-thickness:2px}
+  .compare .fly{font-family:'Bricolage Grotesque';font-weight:800;font-size:42px;line-height:.9;
+    background:linear-gradient(120deg,var(--sky1),var(--sky2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .compare .arrow{font-size:20px;color:#3f4954;padding-bottom:7px}
+  .meta{display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap}
+  .chip{font-family:'IBM Plex Mono',monospace;font-size:10px;background:#10181f;border:1px solid #1f2a33;padding:7px 10px;border-radius:9px;color:#aab3bc}
+  .chip b{color:var(--sky2)}
+  .share{display:flex;gap:9px}
+  .share button{flex:1;border:none;cursor:pointer;font-family:'Bricolage Grotesque';font-weight:800;font-size:13px;padding:14px;border-radius:13px;transition:transform .15s}
+  .share .main{background:linear-gradient(110deg,var(--sky1),var(--sky2));color:#04231d;flex:2}
+  .share .alt{background:#1a232c;color:#cdd5dd}
+  .share button:active{transform:scale(.96)}
+  .datatag{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#5b8b78;letter-spacing:.04em;margin-top:13px}
+  .datatag .n{color:var(--sky2)}
+
+  .toast{position:fixed;top:64px;left:50%;transform:translateX(-50%) translateY(-20px);z-index:50;
+    background:#10181f;border:1px solid #243039;border-radius:12px;padding:10px 15px;font-size:12px;color:#cdd5dd;
+    opacity:0;transition:.35s;pointer-events:none;max-width:88%;text-align:center;box-shadow:0 10px 30px -10px #000}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* custom markers */
+  .mk{width:18px;height:18px;border-radius:50%;border:3px solid #05070a;box-shadow:0 0 0 4px rgba(255,255,255,.1),0 4px 10px rgba(0,0,0,.6)}
+  .mk.from{background:var(--hot1)} .mk.to{background:var(--sky1)}
+  .mk.wish{width:9px;height:9px;border-width:2px;background:var(--sky2);box-shadow:0 0 8px var(--sky1)}
+  .spin{width:15px;height:15px;border:2px solid #1a0c06;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  a.cred{color:#3a4954}
+</style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="mood"></div>
+  <div class="grain"></div>
+
+  <div class="top">
+    <div class="wm"><span class="bfly">𓆟</span>WISHFLY</div>
+    <div class="status"><span class="blip"></span><span id="statusTxt">finding you…</span></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="sheet">
+    <div class="card">
+      <!-- WISH STATE -->
+      <div id="wishView">
+        <div class="nag"><span class="blip2"></span> <span id="nagTxt">drop where you're stuck →</span></div>
+        <h1>stuck again.<br><em>wish you could fly?</em></h1>
+        <div class="sub" id="subTxt">Tap the map to set where you're stuck, then tell me where you're trying to go.</div>
+
+        <div class="route">
+          <div class="leg from"><span class="ic"></span>
+            <div class="col"><div class="k">Stuck at</div><div class="v dim" id="fromV">locating…</div></div>
+          </div>
+          <div class="leg to"><span class="connector"></span><span class="ic"></span>
+            <div class="col"><div class="k">Trying to reach</div>
+              <input class="destinput" id="destInput" placeholder="search a destination…">
+            </div>
+          </div>
+        </div>
+        <div class="presets" id="presets"></div>
+
+        <button class="btn primary" id="wishBtn" disabled><span id="wishBtnTxt">set a destination first</span></button>
+      </div>
+
+      <!-- RESULT STATE -->
+      <div class="result" id="resultView">
+        <div class="vent">// in another timeline, you're already there.</div>
+        <div class="compare">
+          <div class="blk"><div class="k">Driving</div><div class="drive" id="driveTime">—</div></div>
+          <div class="arrow">→</div>
+          <div class="blk"><div class="k">Flying</div><div class="fly" id="flyTime">—</div></div>
+        </div>
+        <div class="meta" id="metaChips"></div>
+        <div class="share">
+          <button class="main" id="shareBtn">Share my rage ↗</button>
+          <button class="alt" id="againBtn">New wish</button>
+        </div>
+        <div class="datatag">your wish became dot <span class="n" id="wishNum">#1</span> on the demand map</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   WISHFLY — config
+   ============================================================ */
+const CONFIG = {
+  // 1) Paste your Formspree endpoint here to start collecting real wishes.
+  //    Make one free at formspree.io, e.g. "https://formspree.io/f/abcdwxyz"
+  FORMSPREE: "",            // <-- LEAVE BLANK to test without sending
+  CRUISE_MPH: 150,          // effective eVTOL speed incl. climb/descent
+  VTOL_OVERHEAD_MIN: 2.5,   // takeoff + landing time
+  PRICE_PER_MILE: 1.6       // demo LAPP fare; surges at peak below
+};
+
+const PRESETS = [
+  {n:"Lower Manhattan", lat:40.7075, lng:-74.0113},
+  {n:"Newark",          lat:40.7357, lng:-74.1724},
+  {n:"JFK Airport",     lat:40.6413, lng:-73.7781},
+  {n:"Hoboken",         lat:40.7440, lng:-74.0324}
+];
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false, attributionControl:false}).setView([40.58,-74.10], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd'
+}).addTo(map);
+L.control.attribution({position:'bottomleft',prefix:false})
+ .addAttribution('<a class="cred" href="https://carto.com/attributions">CARTO</a> · © OSM')
+ .addTo(map);
+
+let fromLL=null, toLL=null, toName="", fromMarker=null, toMarker=null, line=null;
+let settingDest=false, wishCount=0;
+const wishLayer = L.layerGroup().addTo(map);
+
+const $=id=>document.getElementById(id);
+function icon(cls){return L.divIcon({className:'',html:`<div class="mk ${cls}"></div>`,iconSize:[18,18],iconAnchor:[9,9]});}
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2600);}
+
+/* ---------- geolocation ---------- */
+function setFrom(lat,lng,label){
+  fromLL=[lat,lng];
+  if(fromMarker) fromMarker.setLatLng(fromLL); else {
+    fromMarker=L.marker(fromLL,{icon:icon('from'),draggable:true}).addTo(map);
+    fromMarker.on('dragend',e=>{const p=e.target.getLatLng();fromLL=[p.lat,p.lng];reverse(p.lat,p.lng,'from');refresh();});
+  }
+  $('fromV').classList.remove('dim');
+  $('fromV').textContent = label || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  if(!label) reverse(lat,lng,'from');
+  refresh();
+}
+function tryLocate(){
+  $('statusTxt').textContent='finding you…';
+  if(!navigator.geolocation){ fallbackLoc(); return; }
+  navigator.geolocation.getCurrentPosition(
+    p=>{ setFrom(p.coords.latitude,p.coords.longitude); map.setView(fromLL,13); $('statusTxt').textContent='rush hour'; $('nagTxt').textContent="you're here — where to?"; },
+    ()=>fallbackLoc(),
+    {enableHighAccuracy:true,timeout:8000,maximumAge:60000}
+  );
+}
+function fallbackLoc(){
+  // default: Garden State Pkwy near Hazlet, NJ — but invite a tap
+  setFrom(40.4267,-74.1665,null);
+  map.setView(fromLL,12);
+  $('statusTxt').textContent='tap to set';
+  $('nagTxt').textContent='tap the map where you\'re stuck →';
+  toast("Couldn't grab GPS — tap the map to drop where you're stuck.");
+}
+
+/* tap map: first tap with no dest sets destination if dest mode, else moves origin */
+map.on('click',e=>{
+  if(settingDest || !toLL){ setTo(e.latlng.lat,e.latlng.lng,null); }
+  else { setFrom(e.latlng.lat,e.latlng.lng,null); }
+});
+
+function setTo(lat,lng,label){
+  toLL=[lat,lng]; toName=label||"";
+  if(toMarker) toMarker.setLatLng(toLL); else {
+    toMarker=L.marker(toLL,{icon:icon('to'),draggable:true}).addTo(map);
+    toMarker.on('dragend',ev=>{const p=ev.target.getLatLng();toLL=[p.lat,p.lng];toName="";reverse(p.lat,p.lng,'to');refresh();});
+  }
+  settingDest=false;
+  if(label){ $('destInput').value=label; } else reverse(lat,lng,'to');
+  refresh();
+}
+
+/* ---------- reverse / forward geocode (Nominatim, no key) ---------- */
+async function reverse(lat,lng,which){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14`);
+    const d=await r.json();
+    const name=shorten(d);
+    if(which==='from'){$('fromV').classList.remove('dim');$('fromV').textContent=name;}
+    else { toName=name; $('destInput').value=name; }
+  }catch(e){/* offline-ok */}
+}
+function shorten(d){
+  const a=d.address||{};
+  return a.road || a.suburb || a.town || a.city || a.county || (d.display_name||'').split(',')[0] || 'pinned spot';
+}
+let searchTimer;
+$('destInput').addEventListener('input',e=>{
+  clearTimeout(searchTimer);
+  const q=e.target.value.trim();
+  if(q.length<3) return;
+  searchTimer=setTimeout(()=>geocode(q),550);
+});
+async function geocode(q){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`);
+    const d=await r.json();
+    if(d[0]){ setTo(+d[0].lat,+d[0].lon,d[0].display_name.split(',').slice(0,2).join(',')); map.fitBounds([fromLL,toLL],{padding:[80,80]}); }
+  }catch(e){}
+}
+
+/* ---------- presets ---------- */
+const pc=$('presets');
+PRESETS.forEach(p=>{
+  const b=document.createElement('div');b.className='preset';b.textContent=p.n;
+  b.onclick=()=>{ setTo(p.lat,p.lng,p.n); if(fromLL) map.fitBounds([fromLL,toLL],{padding:[70,70]}); };
+  pc.appendChild(b);
+});
+
+/* ---------- enable button ---------- */
+function refresh(){
+  const ready = fromLL && toLL;
+  $('wishBtn').disabled = !ready;
+  $('wishBtnTxt').textContent = ready ? 'Make the wish ✦' : (fromLL ? 'set a destination' : 'drop where you\'re stuck');
+  if(line){map.removeLayer(line);line=null;}
+}
+
+/* ---------- the wish ---------- */
+function haversine(a,b){
+  const R=3958.8,dLat=(b[0]-a[0])*Math.PI/180,dLng=(b[1]-a[1])*Math.PI/180;
+  const s=Math.sin(dLat/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s)); // miles
+}
+async function driveMinutes(a,b){
+  try{
+    const u=`https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=false`;
+    const r=await fetch(u); const d=await r.json();
+    if(d.routes&&d.routes[0]) return {min:d.routes[0].duration/60, mi:d.routes[0].distance/1609.34};
+  }catch(e){}
+  // fallback: straight-line * detour factor at ~28 mph urban avg
+  const mi=haversine(a,b)*1.35; return {min:mi/28*60, mi};
+}
+function fmt(min){ if(min<60) return Math.round(min)+' min'; const h=Math.floor(min/60),m=Math.round(min%60); return `${h}h ${m}m`; }
+
+$('wishBtn').onclick=async()=>{
+  $('wishBtnTxt').innerHTML='<span class="spin"></span>';
+  const flyMi=haversine(fromLL,toLL);
+  const flyMin=flyMi/CONFIG.CRUISE_MPH*60+CONFIG.VTOL_OVERHEAD_MIN;
+  const drv=await driveMinutes(fromLL,toLL);
+
+  // peak surge if local time 7-10 or 16-19
+  const h=new Date().getHours();
+  const peak=(h>=7&&h<10)||(h>=16&&h<19);
+  const fare=Math.max(12, flyMi*CONFIG.PRICE_PER_MILE*(peak?1.7:1));
+
+  // draw corridor
+  if(line) map.removeLayer(line);
+  line=L.polyline([fromLL,toLL],{color:'#27d4ff',weight:3.5,opacity:.9,dashArray:'1 9',lineCap:'round'}).addTo(map);
+  map.fitBounds([fromLL,toLL],{padding:[90,90]});
+  document.body.classList.add('flying');
+  $('statusTxt').textContent='corridor open';
+
+  // fill result
+  $('driveTime').textContent=fmt(drv.min);
+  $('flyTime').textContent=Math.round(flyMin)+' min';
+  $('metaChips').innerHTML=
+    `<span class="chip">📍 ${flyMi.toFixed(1)} mi as the crow flies</span>`+
+    `<span class="chip">⚡ ${peak?'peak ':''}fare <b>$${Math.round(fare)}</b></span>`+
+    `<span class="chip">🦋 saves <b>${Math.max(0,Math.round(drv.min-flyMin))} min</b></span>`;
+  wishCount++; $('wishNum').textContent='#'+wishCount;
+
+  // drop persistent-ish dot + record
+  wishLayer.addLayer(L.marker(toLL,{icon:icon('wish')}));
+  recordWish({from:fromLL,to:toLL,toName,driveMin:Math.round(drv.min),flyMin:Math.round(flyMin),mi:+flyMi.toFixed(2),peak,ts:new Date().toISOString()});
+
+  $('wishView').style.display='none';
+  $('resultView').style.display='block';
+};
+
+$('againBtn').onclick=()=>{
+  $('resultView').style.display='none';
+  $('wishView').style.display='block';
+  document.body.classList.remove('flying');
+  $('statusTxt').textContent='rush hour';
+  $('wishBtnTxt').textContent='Make the wish ✦';
+};
+
+$('shareBtn').onclick=()=>{
+  const txt=`I just "drove" ${$('driveTime').textContent} to go somewhere a flying car does in ${$('flyTime').textContent}. I want my Aeroboticar. 𓆟 #WISHFLY @LorenzAero`;
+  if(navigator.share){ navigator.share({text:txt}).catch(()=>{}); }
+  else { navigator.clipboard?.writeText(txt); toast('Rage copied — go vent on your feed 📸'); }
+};
+
+/* ---------- send to the demand map ---------- */
+async function recordWish(w){
+  if(!CONFIG.FORMSPREE){ console.log('WISH (not sent — set CONFIG.FORMSPREE):',w); return; }
+  try{
+    await fetch(CONFIG.FORMSPREE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(w)});
+  }catch(e){ console.warn('wish send failed',e); }
+}
+
+/* ---------- go ---------- */
+tryLocate();
+</script>
+</body>
+</html>
