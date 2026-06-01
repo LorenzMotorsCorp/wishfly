@@ -23,6 +23,12 @@
   .wm small{display:block;font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.28em;color:#6c7884;margin-top:3px;text-indent:.28em}
   .live{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7fe6c4;letter-spacing:.06em;display:flex;align-items:center;gap:6px;background:rgba(10,16,20,.6);padding:6px 10px;border-radius:9px;border:1px solid #1c2832}
   .live .d{width:7px;height:7px;border-radius:50%;background:var(--sky2);box-shadow:0 0 8px var(--sky1)}
+  .topright{display:flex;flex-direction:column;align-items:flex-end;gap:7px;pointer-events:auto}
+  .applink{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--sky2);text-decoration:none;
+    background:rgba(20,40,46,.7);border:1px solid #1e3a3f;padding:6px 11px;border-radius:9px;transition:.15s}
+  .applink:active{transform:scale(.95)}
+  .empty a{color:var(--sky2);pointer-events:auto;text-decoration:none;border-bottom:1px solid #1e3a3f}
+  .ctrl a#bWish{border-color:var(--sky1);color:var(--sky2);text-decoration:none}
 
   /* stats rail */
   .rail{position:fixed;top:64px;left:14px;z-index:25;width:210px;display:flex;flex-direction:column;gap:10px}
@@ -43,10 +49,10 @@
 
   /* controls */
   .ctrl{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:25;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:94vw}
-  .ctrl button{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;cursor:pointer;
+  .ctrl button,.ctrl a{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;cursor:pointer;
     background:rgba(16,24,30,.9);border:1px solid #1f2a33;color:#cdd5dd;padding:10px 13px;border-radius:11px;
     backdrop-filter:blur(10px);transition:.15s;display:flex;align-items:center;gap:7px}
-  .ctrl button:active{transform:scale(.95)}
+  .ctrl button:active,.ctrl a:active{transform:scale(.95)}
   .ctrl button.on{border-color:var(--sky1);color:var(--sky2);background:rgba(20,40,46,.9)}
   .ctrl button.warm{border-color:#3a2418}
   .ctrl button.warm.on{border-color:var(--hot2);color:var(--hot2)}
@@ -78,7 +84,10 @@
 
   <div class="top">
     <div class="wm"><span>𓆟</span> WISHFLY<small>DEMAND MAP</small></div>
-    <div class="live"><span class="d"></span><span id="liveTxt">no data</span></div>
+    <div class="topright">
+      <a class="applink" href="./">✦ make a wish ↗</a>
+      <div class="live"><span class="d"></span><span id="liveTxt">listening…</span></div>
+    </div>
   </div>
 
   <div class="rail">
@@ -88,28 +97,26 @@
         <div class="stat"><div class="n" id="sCount">0</div><div class="l">wishes logged</div></div>
         <div class="stat"><div class="n warm" id="sSaved">—</div><div class="l">median time wished away</div></div>
         <div class="stat"><div class="n" id="sDest">0</div><div class="l">unique destinations</div></div>
-        <div class="stat"><div class="n warm" id="sPeak">—</div><div class="l">at rush hour</div></div>
+        <div class="stat"><div class="n warm" id="sPct">—</div><div class="l">shorter on average, if granted</div></div>
       </div>
     </div>
     <div class="panel corrPanel">
       <h3>Most-wished destinations</h3>
-      <div id="corrList"><div style="font-size:11px;color:#5a646e">Load data to rank corridors.</div></div>
+      <div id="corrList"><div style="font-size:11px;color:#5a646e">Ranks as wishes arrive.</div></div>
     </div>
   </div>
 
   <div class="empty" id="empty">
-    <h2>The sky is empty.</h2>
-    <p>Drop a Formspree <span class="hot">CSV export</span> anywhere on this page, or tap <b>Demo data</b> below to see what a city full of wishes looks like.</p>
+    <h2>No wishes yet.</h2>
+    <p>This map fills in on its own as people wish for flights. Be the first — <a href="./">make a wish ↗</a></p>
   </div>
 
   <div class="ctrl">
-    <button id="bDemo" class="warm">✦ Demo data</button>
-    <button id="bLoad">⇪ Load CSV</button>
+    <a id="bWish" href="./">✦ make a wish</a>
     <button id="bDest" class="on">◎ Destinations</button>
     <button id="bOrig">◉ Origins</button>
     <button id="bLines">⤳ Desire lines</button>
   </div>
-  <input type="file" id="file" accept=".csv,.json,text/csv,application/json">
 
   <div class="drop" id="dropOv">
     <div class="ring">𓆟</div>
@@ -121,14 +128,14 @@
 
 <script>
 /* ============================================================
-   CONFIG — to make this map LIVE (auto-updating):
-   Point DATA_URL at a public CSV/JSON feed of your wishes.
-   Easiest path: pipe the app's wishes into a Google Sheet via a
-   Google Apps Script web app, then publish the sheet as CSV and
-   paste that URL here. Formspree itself has no public read API,
-   so for Formspree you EXPORT a CSV and drop it on this page.
+   CONFIG — make this map live:
+   Paste your published Google Sheet CSV link into DATA_URL below.
+   (In your sheet: File ▸ Share ▸ Publish to web ▸ the "wishes"
+   tab ▸ CSV ▸ Publish, then copy that link.)
+   The map re-reads it every REFRESH_SECONDS so new wishes appear
+   on their own — no buttons, no uploads.
    ============================================================ */
-const DATA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSN-_HrUstwM1IZ46U0EBqneeWJNja8oHZcey6Jus12HxNoA1vxszvBcgTcBnuMdr6NB8kVSukisquH/pub?gid=136779248&single=true&output=csv";          // e.g. published Google Sheet CSV url
+const DATA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSN-_HrUstwM1IZ46U0EBqneeWJNja8oHZcey6Jus12HxNoA1vxszvBcgTcBnuMdr6NB8kVSukisquH/pub?gid=136779248&single=true&output=csv";
 const REFRESH_SECONDS = 30;   // live polling interval if DATA_URL set
 
 const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([40.66,-74.05],10.5);
@@ -214,10 +221,13 @@ function median(a){if(!a.length)return null;a=a.slice().sort((x,y)=>x-y);const m
 function stats(){
   const n=WISHES.length;
   $('sCount').textContent=n;
-  $('liveTxt').textContent=n?`${n} wishes`:'no data';
+  $('liveTxt').textContent=n?`${n} wishes`:'listening…';
   const saved=WISHES.filter(w=>w.driveMin!=null&&w.flyMin!=null).map(w=>w.driveMin-w.flyMin);
   const md=median(saved); $('sSaved').textContent=md!=null?Math.round(md)+'m':'—';
-  const peak=WISHES.filter(w=>w.peak).length; $('sPeak').textContent=n?Math.round(peak/n*100)+'%':'—';
+  // average % a wish would cut off the trip, if granted
+  const pcts=WISHES.filter(w=>w.driveMin>0&&w.flyMin!=null).map(w=>(w.driveMin-w.flyMin)/w.driveMin*100);
+  const avgPct=pcts.length?pcts.reduce((s,x)=>s+x,0)/pcts.length:null;
+  $('sPct').textContent=avgPct!=null?Math.round(avgPct)+'%':'—';
 
   // aggregate destinations by name (fallback rounded coords)
   const agg={};
@@ -235,47 +245,12 @@ function stats(){
   ).join('') || '<div style="font-size:11px;color:#5a646e">No destinations yet.</div>';
 }
 
-/* ---------- demo data ---------- */
-function demo(){
-  const origins=[ // NJ commuter clusters
-    {n:'Hazlet',lat:40.4267,lng:-74.1665,w:9},{n:'Edison',lat:40.5187,lng:-74.4121,w:8},
-    {n:'Newark',lat:40.7357,lng:-74.1724,w:7},{n:'Red Bank',lat:40.3471,lng:-74.0643,w:6},
-    {n:'New Brunswick',lat:40.4862,lng:-74.4518,w:6},{n:'Toms River',lat:39.9537,lng:-74.1979,w:5},
-    {n:'Paramus',lat:40.9445,lng:-74.0754,w:5},{n:'Asbury Park',lat:40.2204,lng:-74.0121,w:4}
-  ];
-  const dests=[ // where everyone actually wants to be
-    {n:'Lower Manhattan',lat:40.7075,lng:-74.0113,w:12},{n:'Midtown',lat:40.7549,lng:-73.984,w:11},
-    {n:'Newark',lat:40.7357,lng:-74.1724,w:6},{n:'JFK Airport',lat:40.6413,lng:-73.7781,w:7},
-    {n:'Hoboken',lat:40.744,lng:-74.0324,w:5},{n:'Jersey City',lat:40.7178,lng:-74.0431,w:5}
-  ];
-  const wpick=arr=>{const tot=arr.reduce((s,a)=>s+a.w,0);let r=Math.random()*tot;for(const a of arr){if((r-=a.w)<=0)return a;}return arr[0];};
-  const j=()=>(Math.random()-0.5)*0.03;
-  const W=[];
-  for(let k=0;k<185;k++){
-    const o=wpick(origins),d=wpick(dests);
-    const from=[o.lat+j(),o.lng+j()],to=[d.lat+j(),d.lng+j()];
-    const R=3958.8,dLat=(to[0]-from[0])*Math.PI/180,dLng=(to[1]-from[1])*Math.PI/180;
-    const s=Math.sin(dLat/2)**2+Math.cos(from[0]*Math.PI/180)*Math.cos(to[0]*Math.PI/180)*Math.sin(dLng/2)**2;
-    const mi=2*R*Math.asin(Math.sqrt(s));
-    const flyMin=mi/150*60+2.5, driveMin=mi*1.35/26*60*(0.8+Math.random()*0.6);
-    W.push({from,to,toName:d.n,driveMin,flyMin,peak:Math.random()<0.46});
-  }
-  WISHES=W; render(); toast('Demo: 185 imagined commutes ✦');
-}
-
-/* ---------- live / file / drag ---------- */
+/* ---------- live / drag-drop fallback ---------- */
 async function fetchLive(){
   if(!DATA_URL)return;
   try{const r=await fetch(DATA_URL,{cache:'no-store'});ingest(await r.text());$('liveTxt').textContent+=' · live';}
   catch(e){toast('Live feed unreachable.');}
 }
-$('file').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>ingest(rd.result);rd.readAsText(f);});
-$('bLoad').onclick=()=>$('file').click();
-$('bDemo').onclick=demo;
-['dragenter','dragover'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();$('dropOv').classList.add('show');}));
-['dragleave','drop'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();if(ev==='drop'||e.relatedTarget===null)$('dropOv').classList.remove('show');}));
-window.addEventListener('drop',e=>{e.preventDefault();$('dropOv').classList.remove('show');const f=e.dataTransfer.files[0];if(f){const rd=new FileReader();rd.onload=()=>ingest(rd.result);rd.readAsText(f);}});
-
 function setMode(m){mode=m;$('bDest').classList.toggle('on',m==='dest');$('bOrig').classList.toggle('on',m==='orig');render();}
 $('bDest').onclick=()=>setMode('dest');
 $('bOrig').onclick=()=>setMode('orig');
