@@ -295,7 +295,14 @@ function fallbackLoc(){
   map.setView(fromLL,12);
   $('statusTxt').textContent='tap to set';
   $('nagTxt').textContent='tap the map where you\'re stuck →';
-  toast("Couldn't grab GPS — tap the map to drop where you're stuck.");
+  // in-app browsers (Instagram, Facebook, etc.) block GPS — nudge toward a real browser
+  const inApp = /Instagram|FBAN|FBAV|FB_IAB|Snapchat|Line|Pinterest|Twitter/i.test(navigator.userAgent);
+  if(inApp){
+    $('subTxt').innerHTML='Tip: for auto-location, tap the <b>⋯</b> menu (top-right) and choose <b>“Open in browser.”</b> Or just tap the map to drop where you\'re stuck.';
+    toast('In-app browsers block GPS — tap the map, or open in your browser.');
+  } else {
+    toast("Couldn't grab GPS — tap the map to drop where you're stuck.");
+  }
 }
 
 /* tap map: first tap with no dest sets destination if dest mode, else moves origin */
